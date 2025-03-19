@@ -145,7 +145,6 @@ class ClientGUI(QWidget):
                 elif message.startswith("STREAMING:"):
                     movie_name = message.split(":", 1)[1]
                     self.response_box.append(f"Streaming {movie_name}")
-                    # Stream directly here until STREAM_END
                     self.temp_file = tempfile.NamedTemporaryFile(suffix='.mkv', delete=False)
                     bytes_received = 0
                     buffer_threshold = 50 * 1024 * 1024  # 50MB initial buffer
@@ -154,22 +153,21 @@ class ClientGUI(QWidget):
                         while True:
                             data = self.client_socket.recv(1048576)  # 1MB chunks
                             if not data:
-                                self.response_box.append("Stream interrupted unexpectedly.")
+                                self.response_box.append("Stream interrupted: no data received.")
                                 break
                             stream_buffer += data
-                            # Check for STREAM_END delimiter in the buffer
                             if b"STREAM_END#" in stream_buffer:
-                                # Split at delimiter, write video data, and exit
                                 video_data, _ = stream_buffer.split(b"STREAM_END#", 1)
-                                f.write(video_data)
+                                if video_data:
+                                    f.write(video_data)
                                 self.response_box.append("Stream ended.")
-                                self.play_streamed_file()
+                                self.play_streamed_file()  # Ensure playback continues
                                 break
                             else:
-                                # Write the chunk and continue
                                 f.write(data)
-                                stream_buffer = b""  # Clear buffer after writing
+                                stream_buffer = b""
                                 bytes_received += len(data)
+                                self.response_box.append(f"Received {bytes_received // 1024 // 1024}MB")
                                 if bytes_received >= buffer_threshold and not self.player.filename:
                                     self.play_streamed_file()
                     self.temp_file.close()
@@ -182,10 +180,14 @@ class ClientGUI(QWidget):
                 break
 
     def play_streamed_file(self):
-        if self.temp_file:
-            self.player.stop()
-            self.player.command('loadfile', self.temp_file.name)
-            self.progress_slider.setEnabled(True)
+        if self.temp_file and os.path.exists(self.temp_file.name):
+            try:
+                self.player.stop()  # Clear any existing playback
+                self.player.command('loadfile', self.temp_file.name, 'append-play')
+                self.response_box.append("Started playback from temp file.")
+                self.progress_slider.setEnabled(True)
+            except Exception as e:
+                self.response_box.append(f"Playback error: {e}")
 
     def select_movie(self, item):
         movie_name = item.text()

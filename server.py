@@ -38,27 +38,21 @@ def handle_connection(client_socket, client_address):
 
 
 def stream_movie(client_socket, movie_path):
-    """Stream the movie file in 1MB chunks, stop if client requests."""
-    client_socket.setblocking(False)  # Non-blocking to check for messages
+    """Stream the movie file in 1MB chunks."""
+    total_sent = 0
     with open(movie_path, 'rb') as f:
         while True:
             chunk = f.read(1048576)  # 1MB chunks
             if not chunk:
+                print(f"Finished reading {movie_path}, sent {total_sent // 1024 // 1024}MB")
                 break
             try:
                 client_socket.sendall(chunk)
-                # Check for incoming message without blocking
-                try:
-                    message = Protocol.receive(client_socket)
-                    if message == "STOP_STREAM":
-                        print(f"Client requested stop for {movie_path}")
-                        break
-                except BlockingIOError:
-                    pass  # No message waiting, continue streaming
+                total_sent += len(chunk)
+                print(f"Sent {total_sent // 1024 // 1024}MB")
             except socket.error as e:
                 print(f"Stream error: {e}")
                 break
-    client_socket.setblocking(True)  # Restore blocking mode
     Protocol.send(client_socket, "STREAM_END")
 
 
